@@ -14,6 +14,7 @@ from server.core.config import settings
 from server.core.security import create_access_token, hash_password, verify_password
 from server.models.entities import User
 from server.schemas.api import LoginRequest, ProfileUpdateRequest, RegisterRequest, TokenResponse
+from server.schemas.api import MessageResponse
 from server.services.domain import create_audit_log, create_user_with_profile, serialize_user
 from server.models.entities import EmploymentStatus, SystemRole
 
@@ -135,3 +136,87 @@ def get_avatar(user_id: int, db: Session = Depends(get_db)):
     if not file_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="头像不存在。")
     return FileResponse(str(file_path))
+
+
+@router.delete("/me", response_model=MessageResponse)
+def delete_account(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """注销当前用户账号，删除所有关联数据。"""
+    # 禁止唯一的超管账号注销（防止系统被锁死）
+    super_admins = list(db.scalars(select(User).where(User.system_role == SystemRole.SUPER_ADMIN)).all())
+    if super_admins == [current_user]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="当前是唯一的超管账号，无法注销。请先创建另一个超管账号。",
+        )
+
+    user_id = current_user.id
+
+    # 删除关联数据
+    from server.models.entities import (
+        BugAttachment,
+        BugComment,
+        BugTicket,
+        EmploymentRecord,
+        ExamAnswer,
+        ExamAttachment,
+        ExamSubmission,
+        PromotionDemotionRecord,
+        PunishmentRecord,
+        StaffProfile,
+    )
+
+    # 删除 bug 相关
+    for ticket in db.scalars(select(BugTicket).where(BugTicket.reporter_id == user_id)).all():
+        db.delete(ticket)
+    for ticket in db.scalars(select(BugTicket).where(BugTicket.assignee_id == user_id)).all():
+        ticket.assignee_id = None
+    for comment in db.scalars(select(BugComment).where(BugComment.author_id == user_id)).all():
+        db.delete(comment)
+    for att in db.scalars(select(BugAttachment).where(BugAttachment.uploaded_by == user_id)).all():
+        db.delete(att)
+
+    # 删除 exam 相关
+    for submission in db.scalars(select(ExamSubmission).where(ExamSubmission.user_id == user_id)).all():
+        for answer in db.scalars(select(ExamAnswer).where(ExamAnswer.submission_id == submission.id)).all():
+            db.delete(answer)
+        for att in db.scalars(select(ExamAttachment).where(ExamAttachment.submission_id == submission.id)).all():
+            db.delete(att)
+        db.delete(submission)
+    # 清空 grader_id 引用
+    for submission in db.scalars(select(ExamSubmission).where(ExamSubmission.grader_id == user_id)).all():
+        submission.grader_id = None
+
+    # 删除 personnel 相关
+    for record in db.scalars(select(EmploymentRecord).where(EmploymentRecord.operator_id == user_id)).all():
+        db.delete(record)
+    for record in db.scalars(select(EmploymentRecord).where(EmploymentRecord.user_id == user_id)).all():
+        db.delete(record)
+    for record in db.scalars(select(PromotionDemotionRecord).where(PromotionDemotionRecord.operator_id == user_id)).all():
+        db.delete(record)
+    for record in db.scalars(select(PromotionDemotionRecord).where(PromotionDemotionRecord.user_id == user_id)).all():
+        db.delete(record)
+    for record in db.scalars(select(PunishmentRecord).where(PunishmentRecord.operator_id == user_id)).all():
+        db.delete(record)
+    for record in db.scalars(select(PunishmentRecord).where(PunishmentRecord.user_id == user_id)).all():
+        db.delete(record)
+
+    # 删除 staff profile
+    profile = db.scalar(select(StaffProfile).where(StaffProfile.user_id == user_id))
+    if profile:
+        db.delete(profile)
+
+    # 删除用户
+    db.delete(current_user)
+    create_audit_log(
+        db,
+        actor_id=user_id,
+        action="auth.account.delete",
+        target_type="user",
+        target_id=str(user_id),
+    )
+    db.commit()
+
+    return MessageResponse(message="账号已成功注销。")

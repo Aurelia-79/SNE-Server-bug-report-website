@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { reactive, ref, watchEffect } from 'vue';
-import { ElMessage } from 'element-plus';
-import { User, Lock } from '@element-plus/icons-vue';
+import { useRouter } from 'vue-router';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { User, Lock, Delete } from '@element-plus/icons-vue';
 
 import { apiClient } from '../api/client';
 import { useAuth } from '../stores/auth';
 import type { User as UserType } from '../types';
 
 const auth = useAuth();
+const router = useRouter();
 const saving = ref(false);
 const uploading = ref(false);
+const deleting = ref(false);
 
 const form = reactive({
   username: '',
@@ -73,6 +76,50 @@ async function uploadAvatar(event: Event) {
   } finally {
     uploading.value = false;
     input.value = '';
+  }
+}
+
+async function confirmDeleteAccount() {
+  try {
+    await ElMessageBox.confirm(
+      '注销后将无法恢复所有数据（包括档案、答卷、工单等），确定要继续吗？',
+      '确认注销账号',
+      {
+        confirmButtonText: '确认注销',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger',
+        type: 'warning',
+      }
+    );
+  } catch {
+    return;
+  }
+
+  try {
+    await ElMessageBox.prompt(
+      '请输入当前密码以确认注销',
+      '密码确认',
+      {
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        inputType: 'password',
+        inputPlaceholder: '请输入当前密码',
+      }
+    );
+  } catch {
+    return;
+  }
+
+  deleting.value = true;
+  try {
+    await apiClient.delete('/api/auth/me');
+    auth.logout();
+    router.replace('/login');
+    ElMessage.success('账号已成功注销');
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail ?? '注销失败');
+  } finally {
+    deleting.value = false;
   }
 }
 </script>
@@ -139,6 +186,19 @@ async function uploadAvatar(event: Event) {
           </button>
         </div>
       </div>
+    </section>
+
+    <!-- Danger Zone -->
+    <section class="panel-card" style="border: 1px solid rgba(220, 38, 38, 0.2);">
+      <h4 style="color: var(--color-danger); display: flex; align-items: center; gap: 8px;">
+        <el-icon><Delete /></el-icon>危险操作
+      </h4>
+      <p style="margin: 0 0 var(--space-3); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+        注销账号后，所有数据将被永久删除且无法恢复，包括人员档案、答卷记录、工单和评论等。
+      </p>
+      <button class="danger-action" :disabled="deleting" @click="confirmDeleteAccount">
+        <el-icon><Delete /></el-icon>{{ deleting ? '注销中...' : '注销账号' }}
+      </button>
     </section>
   </div>
 </template>
