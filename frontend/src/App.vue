@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { useAuth } from './stores/auth';
+import { useTheme } from './stores/theme';
 import {
   Monitor,
   UserFilled,
@@ -20,11 +21,13 @@ import {
 const route = useRoute();
 const router = useRouter();
 const auth = useAuth();
+const { toggle: toggleTheme } = useTheme();
 
 const isLoginPage = computed(() => route.name === 'login');
 const activeNavPath = computed(() => (
   route.path.startsWith('/exams') ? '/exams' : route.path
 ));
+const isDark = computed(() => document.documentElement.classList.contains('theme-dark'));
 
 const navigation = computed(() => {
   const user = auth.state.user;
@@ -143,7 +146,22 @@ onMounted(bootstrap);
     <main class="shell__main" id="main-content">
       <header class="topbar">
         <h2>{{ route.meta.title ?? '管理系统' }}</h2>
-        <el-dropdown trigger="click" @command="handleUserCommand">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <!-- Theme Toggle -->
+          <button
+            class="theme-toggle-btn"
+            :title="isDark ? '切换到浅色模式' : '切换到深色模式'"
+            @click="toggleTheme"
+          >
+            <svg class="toggle-icon toggle-icon--sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+            </svg>
+            <svg class="toggle-icon toggle-icon--moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+          </button>
+          <el-dropdown trigger="click" @command="handleUserCommand">
           <button class="user-menu-button">
             <img
               v-if="auth.state.user?.avatar_url"
@@ -166,8 +184,9 @@ onMounted(bootstrap);
                 <el-icon><SwitchButton /></el-icon>退出登录
               </el-dropdown-item>
             </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+            </template>
+          </el-dropdown>
+        </div>
       </header>
 
       <section class="content-surface">

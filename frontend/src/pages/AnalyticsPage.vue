@@ -11,6 +11,27 @@ const rankFilter = ref('');
 const chartRef = ref<HTMLDivElement | null>(null);
 let chartInstance: echarts.ECharts | null = null;
 
+function getChartColors() {
+  const isDark = document.documentElement.classList.contains('theme-dark');
+  return {
+    tooltipBg: isDark ? 'rgba(22, 32, 50, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+    tooltipBorder: isDark ? '#334155' : '#E2E8F0',
+    tooltipText: isDark ? '#E2E8F0' : '#0F172A',
+    axisLabel: isDark ? '#64748B' : '#94A3B8',
+    axisLine: isDark ? '#334155' : '#E2E8F0',
+    splitLine: isDark ? '#1E293B' : '#F1F5F9',
+    labelColor: isDark ? '#CBD5E1' : '#0F172A',
+    barAboveAvg: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+      { offset: 0, color: '#3B82F6' },
+      { offset: 1, color: '#2563EB' },
+    ]),
+    barBelowAvg: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+      { offset: 0, color: '#64748B' },
+      { offset: 1, color: '#475569' },
+    ]),
+  };
+}
+
 const ranks: Array<{ label: string; value: GameAdminRank | '' }> = [
   { label: '全部', value: '' },
   { label: '审查期管理员', value: '审查期管理员' },
@@ -33,28 +54,29 @@ async function loadOverview() {
 function renderChart() {
   if (!chartRef.value || !overview.value) return;
   chartInstance ??= echarts.init(chartRef.value);
+  const colors = getChartColors();
   chartInstance.setOption({
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(255,255,255,0.95)',
-      borderColor: '#E2E8F0',
+      backgroundColor: colors.tooltipBg,
+      borderColor: colors.tooltipBorder,
       borderWidth: 1,
-      textStyle: { color: '#0F172A', fontSize: 12 },
+      textStyle: { color: colors.tooltipText, fontSize: 12 },
     },
     grid: { left: 12, right: 12, bottom: 24, top: 36, containLabel: true },
     xAxis: {
       type: 'category',
       data: overview.value.chart_items.map((item) => item.name),
-      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: '#94A3B8' },
-      axisLine: { lineStyle: { color: '#E2E8F0' } },
+      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: colors.axisLabel },
+      axisLine: { lineStyle: { color: colors.axisLine } },
       axisTick: { alignWithLabel: true },
     },
     yAxis: {
       type: 'value',
       max: 100,
-      axisLabel: { fontSize: 11, color: '#94A3B8' },
-      splitLine: { lineStyle: { color: '#F1F5F9', type: 'dashed' } },
+      axisLabel: { fontSize: 11, color: colors.axisLabel },
+      splitLine: { lineStyle: { color: colors.splitLine, type: 'dashed' } },
     },
     series: [
       {
@@ -64,14 +86,8 @@ function renderChart() {
           itemStyle: {
             borderRadius: [6, 6, 0, 0],
             color: item.score >= (overview.value?.summary.average_score ?? 0)
-              ? new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: '#2563EB' },
-                { offset: 1, color: '#3B82F6' },
-              ])
-              : new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: '#64748B' },
-                { offset: 1, color: '#94A3B8' },
-              ]),
+              ? colors.barAboveAvg
+              : colors.barBelowAvg,
           },
         })),
         barWidth: '60%',
@@ -80,7 +96,7 @@ function renderChart() {
           position: 'top',
           fontSize: 11,
           fontWeight: 600,
-          color: '#0F172A',
+          color: colors.labelColor,
           formatter: (params: any) => `${params.value}分`,
         },
       },
@@ -94,11 +110,18 @@ watch(rankFilter, () => loadOverview());
 onMounted(async () => {
   await loadOverview();
   renderChart();
+
+  // Watch for theme changes and re-render chart
+  const observer = new MutationObserver(() => renderChart());
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+  onBeforeUnmount(() => {
+    observer.disconnect();
+    chartInstance?.dispose();
+  });
 });
 
-onBeforeUnmount(() => {
-  chartInstance?.dispose();
-});
+// (removed — moved into onMounted)
 </script>
 
 <template>
