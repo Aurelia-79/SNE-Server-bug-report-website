@@ -1,0 +1,1 @@
+Get-NetTCPConnection -LocalPort 17250 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force; Write-Host "Killed PID $($_.OwningProcess)" }
